@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Career Navigator Workflow Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    body { min-height: 100vh; }
+    .nav-btn.active { background:#1d4ed8; color:white; }
+    .view-btn.active { background:#0f172a; color:white; }
+    .modal-backdrop { background: rgba(15,23,42,.58); }
+    .truncate-2 {
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    }
+    @media print {
+      .no-print { display:none !important; }
+      body { background:white !important; }
+      .print-card { break-inside:avoid; box-shadow:none !important; border:1px solid #cbd5e1; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-900">
+<div class="min-h-screen flex">
+
+  <aside class="no-print hidden lg:flex w-64 bg-slate-950 text-white p-4 flex-col fixed inset-y-0 left-0 z-30">
+    <div class="mb-6">
+      <div class="text-xs uppercase tracking-wider text-slate-400">Career Navigator</div>
+      <div class="text-xl font-bold mt-1">Workflow Tracker</div>
+      <div class="text-xs text-slate-400 mt-2">Daily work assistant + 30-day compliance</div>
+    </div>
+    <nav class="space-y-2">
+      <button class="nav-btn active w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800" data-page="today" onclick="showPage('today')">Today</button>
+      <button class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800" data-page="participants" onclick="showPage('participants')">My Participants</button>
+      <button class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800" data-page="tasks" onclick="showPage('tasks')">My Tasks</button>
+      <button class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800" data-page="reports" onclick="showPage('reports')">Reports</button>
+      <button class="nav-btn w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800" data-page="settings" onclick="showPage('settings')">Settings</button>
+    </nav>
+    <div class="mt-auto text-xs text-slate-400 border-t border-slate-800 pt-4">
+      Data is stored in this browser. Use Backup JSON before changing computers or clearing browser data.
+    </div>
+  </aside>
+
+  <main class="w-full lg:ml-64">
+    <header class="no-print sticky top-0 z-20 bg-white border-b shadow-sm">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col xl:flex-row xl:items-center gap-3 justify-between">
+        <div>
+          <h1 id="pageTitle" class="text-xl font-bold">Today</h1>
+          <p id="pageSubtitle" class="text-sm text-slate-500">Your highest-priority participant work.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative flex-1 min-w-[260px]">
+            <input id="commandSearch" oninput="renderCommandResults()" onfocus="renderCommandResults()"
+              class="w-full border rounded-xl px-4 py-2 pr-10"
+              placeholder="Search participant or type an action..." />
+            <div id="commandResults" class="hidden absolute left-0 right-0 mt-2 bg-white border rounded-xl shadow-xl max-h-80 overflow-y-auto z-50"></div>
+          </div>
+          <button onclick="openQuickUpdate()" class="bg-blue-700 text-white rounded-xl px-4 py-2 font-semibold">Quick Update</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="lg:hidden no-print bg-slate-950 text-white px-3 py-2 flex gap-2 overflow-x-auto">
+      <button class="nav-btn active shrink-0 px-3 py-2 rounded-lg" data-page="today" onclick="showPage('today')">Today</button>
+      <button class="nav-btn shrink-0 px-3 py-2 rounded-lg" data-page="participants" onclick="showPage('participants')">Participants</button>
+      <button class="nav-btn shrink-0 px-3 py-2 rounded-lg" data-page="tasks" onclick="showPage('tasks')">Tasks</button>
+      <button class="nav-btn shrink-0 px-3 py-2 rounded-lg" data-page="reports" onclick="showPage('reports')">Reports</button>
+      <button class="nav-btn shrink-0 px-3 py-2 rounded-lg" data-page="settings" onclick="showPage('settings')">Settings</button>
+    </div>
+
+    <div class="max-w-7xl mx-auto p-4 md:p-6">
+
+      <!-- TODAY -->
+      <section id="page-today" class="page-section">
+        <div id="todayGreeting" class="mb-5"></div>
+        <div id="todaySummary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+
+        <div class="grid xl:grid-cols-3 gap-5">
+          <div class="xl:col-span-2 space-y-5">
+            <section class="bg-white rounded-2xl shadow overflow-hidden">
+              <div class="p-4 border-b flex items-center justify-between gap-3">
+                <div>
+                  <h2 class="font-bold text-lg">Priority Participants</h2>
+                  <p class="text-sm text-slate-500">People who need action first.</p>
+                </div>
+                <button onclick="startWorkday()" class="bg-slate-950 text-white px-4 py-2 rounded-xl font-semibold">Start My Workday</button>
+              </div>
+              <div id="priorityList" class="divide-y"></div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow overflow-hidden">
+              <div class="p-4 border-b">
+                <h2 class="font-bold text-lg">Recently Updated</h2>
+              </div>
+              <div id="recentUpdates" class="divide-y"></div>
+            </section>
+          </div>
+
+          <div class="space-y-5">
+            <section class="bg-white rounded-2xl shadow p-4">
+              <h2 class="font-bold text-lg">Quick Actions</h2>
+              <div id="quickActions" class="grid grid-cols-2 gap-2 mt-3"></div>
+            </section>
+
+            <section class="bg-white rounded-2xl shadow p-4">
+              <div class="flex items-center justify-between">
+                <h2 class="font-bold text-lg">My Dashboard</h2>
+                <button onclick="showPage('settings')" class="text-blue-700 text-sm font-semibold">Customize</button>
+              </div>
+              <div id="personalDashboard" class="space-y-3 mt-3"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <!-- PARTICIPANTS -->
+      <section id="page-participants" class="page-section hidden">
+        <section class="bg-white rounded-2xl shadow p-4 mb-5 no-print">
+          <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+            <div class="flex flex-wrap gap-2">
+              <button id="mode-list" onclick="setDisplayMode('list')" class="view-btn active rounded-lg px-3 py-2 text-sm font-semibold">List</button>
+              <button id="mode-card" onclick="setDisplayMode('card')" class="view-btn bg-slate-200 rounded-lg px-3 py-2 text-sm font-semibold">Cards</button>
+              <button id="mode-focus" onclick="setDisplayMode('focus')" class="view-btn bg-slate-200 rounded-lg px-3 py-2 text-sm font-semibold">Focus</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <select id="participantFilter" onchange="renderParticipants()" class="border rounded-lg p-2 text-sm">
+                <option value="all">All participants</option>
+                <option value="needs">Needs attention</option>
+                <option value="overdue">30+ days overdue</option>
+                <option value="warning">20–29 days</option>
+                <option value="recent">Recently updated</option>
+              </select>
+              <select id="staffFilter" onchange="renderParticipants()" class="border rounded-lg p-2 text-sm">
+                <option value="all">All staff</option>
+              </select>
+              <select id="participantSort" onchange="renderParticipants()" class="border rounded-lg p-2 text-sm">
+                <option value="risk">Highest risk</option>
+                <option value="name">Name</option>
+                <option value="staff">Staff</option>
+                <option value="last">Oldest case note</option>
+              </select>
+              <button onclick="openParticipantEditor()" class="bg-blue-700 text-white rounded-lg px-3 py-2 text-sm font-semibold">Add Participant</button>
+            </div>
+          </div>
+        </section>
+        <div id="participantWorkspace"></div>
+      </section>
+
+      <!-- TASKS -->
+      <section id="page-tasks" class="page-section hidden">
+        <div class="grid lg:grid-cols-3 gap-5">
+          <section class="lg:col-span-2 bg-white rounded-2xl shadow overflow-hidden">
+            <div class="p-4 border-b flex items-center justify-between">
+              <div>
+                <h2 class="font-bold text-lg">My Tasks</h2>
+                <p class="text-sm text-slate-500">Tasks due across your caseload.</p>
+              </div>
+              <button onclick="openTaskEditor()" class="bg-blue-700 text-white px-3 py-2 rounded-lg font-semibold">Add Task</button>
+            </div>
+            <div id="taskList" class="divide-y"></div>
+          </section>
+          <section class="bg-white rounded-2xl shadow p-4">
+            <h2 class="font-bold text-lg">Task Summary</h2>
+            <div id="taskSummary" class="space-y-3 mt-3"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="page-reports" class="page-section hidden">
+        <div id="reportSummary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+        <section class="bg-white rounded-2xl shadow overflow-hidden mb-5">
+          <div class="p-4 border-b flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h2 class="font-bold text-lg">30-Day Compliance Report</h2>
+              <p class="text-sm text-slate-500">Printable caseload summary.</p>
+            </div>
+            <button onclick="window.print()" class="no-print bg-slate-950 text-white px-3 py-2 rounded-lg font-semibold">Print Report</button>
+          </div>
+          <div id="complianceReport" class="p-4"></div>
+        </section>
+        <section class="no-print bg-white rounded-2xl shadow p-4">
+          <h2 class="font-bold text-lg mb-3">Import / Backup</h2>
+          <div class="flex flex-wrap gap-2">
+            <label class="border rounded-lg px-3 py-2 cursor-pointer bg-slate-50 font-semibold">
+              Import Excel
+              <input type="file" accept=".xlsx,.xls" onchange="importExcel(event)" class="hidden"/>
+            </label>
+            <button onclick="loadSampleData()" class="border rounded-lg px-3 py-2 font-semibold">Load Sample Data</button>
+            <button onclick="exportJSON()" class="border rounded-lg px-3 py-2 font-semibold">Backup JSON</button>
+            <label class="border rounded-lg px-3 py-2 cursor-pointer font-semibold">
+              Restore JSON
+              <input type="file" accept="application/json" onchange="importJSON(event)" class="hidden"/>
+            </label>
+            <button onclick="exportCSV()" class="border rounded-lg px-3 py-2 font-semibold">Export CSV</button>
+            <button onclick="clearAllData()" class="border border-red-300 text-red-700 rounded-lg px-3 py-2 font-semibold">Clear Data</button>
+          </div>
+          <p class="text-sm text-slate-500 mt-3">
+            Accepted Excel columns: State ID, Last, First Name, Participation Date, Assigned Staff, Last Case Note Date, Days Since Last Case Note.
+          </p>
+          <div id="importResult" class="text-sm mt-3"></div>
+        </section>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="page-settings" class="page-section hidden">
+        <div class="grid lg:grid-cols-2 gap-5">
+          <section class="bg-white rounded-2xl shadow p-5">
+            <h2 class="font-bold text-lg">Home Dashboard</h2>
+            <p class="text-sm text-slate-500 mt-1">Choose what appears on Today.</p>
+            <div id="dashboardOptions" class="space-y-3 mt-4"></div>
+          </section>
+          <section class="bg-white rounded-2xl shadow p-5">
+            <h2 class="font-bold text-lg">Quick Actions</h2>
+            <p class="text-sm text-slate-500 mt-1">Choose the buttons shown on Today.</p>
+            <div id="quickActionOptions" class="space-y-3 mt-4"></div>
+          </section>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- QUICK UPDATE MODAL -->
+<div id="quickUpdateModal" class="hidden fixed inset-0 z-50 modal-backdrop p-3 md:p-8 overflow-y-auto no-print">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-3xl mx-auto">
+    <div class="p-4 border-b flex items-center justify-between">
+      <div>
+        <h2 class="text-xl font-bold">Quick Update</h2>
+        <p class="text-sm text-slate-500">One action updates the timeline, contact date, tasks, and case-note draft.</p>
+      </div>
+      <button onclick="closeModal('quickUpdateModal')" class="text-2xl px-2">&times;</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="grid md:grid-cols-2 gap-3">
+        <div>
+          <label class="text-sm font-semibold">Participant</label>
+          <select id="quParticipant" class="w-full border rounded-lg p-2 mt-1"></select>
+        </div>
+        <div>
+          <label class="text-sm font-semibold">Date</label>
+          <input id="quDate" type="date" class="w-full border rounded-lg p-2 mt-1"/>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-sm font-semibold">What happened?</label>
+        <div id="updateTypeButtons" class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2"></div>
+      </div>
+
+      <div id="contactMethodWrap">
+        <label class="text-sm font-semibold">Method</label>
+        <div id="methodButtons" class="flex flex-wrap gap-2 mt-2"></div>
+      </div>
+
+      <div>
+        <label class="text-sm font-semibold">Discussed / Update</label>
+        <div id="topicButtons" class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2"></div>
+      </div>
+
+      <div>
+        <label class="text-sm font-semibold">Outcome or participant update</label>
+        <textarea id="quDetails" rows="3" class="w-full border rounded-lg p-2 mt-1" placeholder="Brief factual update"></textarea>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-3">
+        <div>
+          <label class="text-sm font-semibold">Next step</label>
+          <input id="quNextStep" class="w-full border rounded-lg p-2 mt-1" placeholder="Example: Request attendance record"/>
+        </div>
+        <div>
+          <label class="text-sm font-semibold">Follow-up date</label>
+          <input id="quFollowUp" type="date" class="w-full border rounded-lg p-2 mt-1"/>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input id="quCaseNoteComplete" type="checkbox" class="h-4 w-4"/>
+        <label for="quCaseNoteComplete" class="text-sm font-semibold">Case note already entered in NEworks</label>
+      </div>
+
+      <div class="bg-slate-50 border rounded-xl p-4">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="font-bold">Generated Case Note</h3>
+          <button onclick="copyGeneratedCaseNote()" class="text-blue-700 font-semibold text-sm">Copy</button>
+        </div>
+        <div id="generatedCaseNote" class="mt-2 text-sm whitespace-pre-wrap"></div>
+      </div>
+    </div>
+    <div class="p-4 border-t flex justify-end gap-2">
+      <button onclick="closeModal('quickUpdateModal')" class="border rounded-lg px-4 py-2">Cancel</button>
+      <button onclick="saveQuickUpdate()" class="bg-blue-700 text-white rounded-lg px-4 py-2 font-semibold">Save Update</button>
+    </div>
+  </div>
+</div>
+
+<!-- PARTICIPANT DETAIL MODAL -->
+<div id="participantModal" class="hidden fixed inset-0 z-50 modal-backdrop p-3 md:p-8 overflow-y-auto no-print">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-5xl mx-auto">
+    <div class="p-4 border-b flex justify-between gap-3">
+      <div>
+        <h2 id="detailName" class="text-xl font-bold"></h2>
+        <p id="detailMeta" class="text-sm text-slate-500"></p>
+      </div>
+      <button onclick="closeModal('participantModal')" class="text-2xl px-2">&times;</button>
+    </div>
+    <div id="participantDetailBody" class="p-5"></div>
+  </div>
+</div>
+
+<!-- PARTICIPANT EDITOR -->
+<div id="participantEditorModal" class="hidden fixed inset-0 z-50 modal-backdrop p-3 md:p-8 overflow-y-auto no-print">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-2xl mx-auto">
+    <div class="p-4 border-b flex justify-between">
+      <h2 class="text-xl font-bold">Add / Edit Participant</h2>
+      <button onclick="closeModal('participantEditorModal')" class="text-2xl px-2">&times;</button>
+    </div>
+    <div class="p-5 grid md:grid-cols-2 gap-3">
+      <input id="peId" type="hidden"/>
+      <div><label class="text-sm font-semibold">Participant name</label><input id="peName" class="w-full border rounded-lg p-2 mt-1"/></div>
+      <div><label class="text-sm font-semibold">State ID</label><input id="peStateId" class="w-full border rounded-lg p-2 mt-1"/></div>
+      <div><label class="text-sm font-semibold">Program</label>
+        <select id="peProgram" class="w-full border rounded-lg p-2 mt-1">
+          <option>Adult</option><option>Dislocated Worker</option><option>Youth</option><option>Other</option>
+        </select>
+      </div>
+      <div><label class="text-sm font-semibold">Assigned staff</label><input id="peStaff" class="w-full border rounded-lg p-2 mt-1"/></div>
+      <div><label class="text-sm font-semibold">Participation date</label><input id="peParticipation" type="date" class="w-full border rounded-lg p-2 mt-1"/></div>
+      <div><label class="text-sm font-semibold">Last case note date</label><input id="peLastContact" type="date" class="w-full border rounded-lg p-2 mt-1"/></div>
+      <div class="md:col-span-2"><label class="text-sm font-semibold">Current status</label>
+        <select id="peStatus" class="w-full border rounded-lg p-2 mt-1">
+          <option>Active</option><option>Training</option><option>WEX</option><option>Follow-Up</option><option>Closed</option>
+        </select>
+      </div>
+    </div>
+    <div class="p-4 border-t flex justify-end gap-2">
+      <button onclick="closeModal('participantEditorModal')" class="border rounded-lg px-4 py-2">Cancel</button>
+      <button onclick="saveParticipantEditor()" class="bg-blue-700 text-white rounded-lg px-4 py-2 font-semibold">Save Participant</button>
+    </div>
+  </div>
+</div>
+
+<!-- TASK EDITOR -->
+<div id="taskModal" class="hidden fixed inset-0 z-50 modal-backdrop p-3 md:p-8 overflow-y-auto no-print">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-xl mx-auto">
+    <div class="p-4 border-b flex justify-between">
+      <h2 class="text-xl font-bold">Add Task</h2>
+      <button onclick="closeModal('taskModal')" class="text-2xl px-2">&times;</button>
+    </div>
+    <div class="p-5 space-y-3">
+      <div><label class="text-sm font-semibold">Participant</label><select id="taskParticipant" class="w-full border rounded-lg p-2 mt-1"></select></div>
+      <div><label class="text-sm font-semibold">Task</label><input id="taskText" class="w-full border rounded-lg p-2 mt-1"/></div>
+      <div><label class="text-sm font-semibold">Due date</label><input id="taskDue" type="date" class="w-full border rounded-lg p-2 mt-1"/></div>
+    </div>
+    <div class="p-4 border-t flex justify-end gap-2">
+      <button onclick="closeModal('taskModal')" class="border rounded-lg px-4 py-2">Cancel</button>
+      <button onclick="saveTask()" class="bg-blue-700 text-white rounded-lg px-4 py-2 font-semibold">Save Task</button>
+    </div>
+  </div>
+</div>
+
+<!-- WORKDAY FOCUS -->
+<div id="workdayModal" class="hidden fixed inset-0 z-50 modal-backdrop p-3 md:p-8 overflow-y-auto no-print">
+  <div class="bg-white rounded-2xl shadow-2xl max-w-3xl mx-auto">
+    <div class="p-4 border-b flex justify-between">
+      <div>
+        <h2 class="text-xl font-bold">Workday Focus</h2>
+        <p id="workdayProgress" class="text-sm text-slate-500"></p>
+      </div>
+      <button onclick="closeModal('workdayModal')" class="text-2xl px-2">&times;</button>
+    </div>
+    <div id="workdayBody" class="p-5"></div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'career_navigator_workflow_tracker_v2';
+const DEFAULT_SETTINGS = {
+  dashboard: ['overdue','warning','tasks','missing'],
+  quickActions: ['contact','caseNote','task','activity']
+};
+
+let data = loadData();
+let activePage = 'today';
+let displayMode = 'list';
+let selectedUpdateType = 'Contact made';
+let selectedMethod = 'Phone';
+let selectedTopics = [];
+let focusIndex = 0;
+let workdayQueue = [];
+
+const UPDATE_TYPES = ['Contact made','Contact attempted','Document received','Appointment scheduled','Activity completed','Employment update','Training update'];
+const METHODS = ['Phone','Text','Email','In Person','Virtual','Other'];
+const TOPICS = ['Training progress','Employment','Transportation','Documentation','Barrier resolution','Goals / IEP / ISS'];
+const QUICK_ACTION_LABELS = {
+  contact:'Log Contact',
+  caseNote:'Case Note',
+  task:'Add Task',
+  activity:'Activity Update',
+  employment:'Employment Update',
+  training:'Training Update'
+};
+
+function loadData() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return { participants:[], logs:[], tasks:[], settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  try {
+    const parsed = JSON.parse(saved);
+    return {
+      participants: parsed.participants || [],
+      logs: parsed.logs || [],
+      tasks: parsed.tasks || [],
+      settings: {
+        dashboard: parsed.settings?.dashboard || DEFAULT_SETTINGS.dashboard,
+        quickActions: parsed.settings?.quickActions || DEFAULT_SETTINGS.quickActions
+      }
+    };
+  } catch {
+    return { participants:[], logs:[], tasks:[], settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  }
+}
+function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+function createId(){ return crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random().toString(16).slice(2); }
+function todayISO(){ const d=new Date(); return dateToISO(d); }
+function dateToISO(d){ if(!d || isNaN(d)) return ''; return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'); }
+function todayStart(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+function parseDate(v){
+  if(!v) return null;
+  if(v instanceof Date && !isNaN(v)){ const d=new Date(v); d.setHours(0,0,0,0); return d; }
+  if(typeof v==='number' && typeof XLSX!=='undefined'){
+    const p=XLSX.SSF.parse_date_code(v); return p ? new Date(p.y,p.m-1,p.d) : null;
+  }
+  const s=String(v).trim(); if(!s) return null;
+  const direct=new Date(s); if(!isNaN(direct)){ direct.setHours(0,0,0,0); return direct; }
+  const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? new Date(+m[3],+m[1]-1,+m[2]) : null;
+}
+function toISODate(v){ const d=parseDate(v); return d?dateToISO(d):''; }
+function formatDate(v){ const d=parseDate(v); return d?d.toLocaleDateString():''; }
+function daysSince(v){ const d=parseDate(v); return d===null?null:Math.floor((todayStart()-d)/86400000); }
+function daysUntil(v){ const d=parseDate(v); return d===null?null:Math.ceil((d-todayStart())/86400000); }
+function escapeHtml(v){ return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c])); }
+function cleanText(v){ return String(v??'').replace(/\s+/g,' ').trim(); }
+function normalizeHeader(v){ return String(v||'').replace(/\n/g,' ').replace(/\s+/g,' ').trim().toLowerCase(); }
+
+function getRisk(p){
+  const days=daysSince(p.lastCaseNoteDate);
+  if(days===null) return {label:'No Date',days:null,priority:4,badge:'bg-blue-100 text-blue-900',row:'bg-blue-50'};
+  if(days>=30) return {label:'Overdue',days,priority:5,badge:'bg-red-700 text-white',row:'bg-red-50'};
+  if(days>=20) return {label:'Needs Contact',days,priority:3,badge:'bg-yellow-400 text-slate-900',row:'bg-yellow-50'};
+  return {label:'Current',days,priority:1,badge:'bg-emerald-700 text-white',row:'bg-white'};
+}
+function participantLogs(id){ return data.logs.filter(l=>l.participantId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
+function participantTasks(id){ return data.tasks.filter(t=>t.participantId===id && !t.completed); }
+function latestLog(id){ return participantLogs(id)[0] || null; }
+function recentThreshold(){ const d=new Date(); d.setDate(d.getDate()-7); return d; }
+
+function getActionAdvice(p){
+  const risk=getRisk(p);
+  const tasks=participantTasks(p.id).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+  const overdueTask=tasks.find(t=>daysUntil(t.due)<0);
+  const dueTask=tasks.find(t=>daysUntil(t.due)<=7);
+  if(risk.label==='Overdue') return {title:'Contact participant now', detail:`${risk.days} days since the last case note. Log a contact or documented attempt.`};
+  if(risk.label==='No Date') return {title:'Verify the last case note date', detail:'No case note date is available. Review the record or make contact.'};
+  if(overdueTask) return {title:overdueTask.text, detail:`Task was due ${formatDate(overdueTask.due)}.`};
+  if(risk.label==='Needs Contact') return {title:'Plan contact before day 30', detail:`${30-risk.days} day${30-risk.days===1?'':'s'} remain before 30 days.`};
+  if(dueTask) return {title:dueTask.text, detail:`Due ${formatDate(dueTask.due)}.`};
+  return {title:'Review current pathway', detail:'No urgent contact alert. Confirm the next planned step is still accurate.'};
+}
+
+function showPage(page){
+  activePage=page;
+  document.querySelectorAll('.page-section').forEach(s=>s.classList.add('hidden'));
+  document.getElementById('page-'+page).classList.remove('hidden');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.page===page));
+  const titles={
+    today:['Today','Your highest-priority participant work.'],
+    participants:['My Participants','One participant record for contacts, tasks, timeline, and next action.'],
+    tasks:['My Tasks','Planned work across your caseload.'],
+    reports:['Reports','30-day compliance, import, backup, and printable summaries.'],
+    settings:['Settings','Adapt the tool to each Career Navigator’s workflow.']
+  };
+  document.getElementById('pageTitle').textContent=titles[page][0];
+  document.getElementById('pageSubtitle').textContent=titles[page][1];
+  renderAll();
+}
+
+function renderAll(){
+  updateParticipantSelectors();
+  updateStaffFilter();
+  renderToday();
+  renderParticipants();
+  renderTasks();
+  renderReports();
+  renderSettings();
+}
+
+function renderToday(){
+  const hour=new Date().getHours();
+  const greeting=hour<12?'Good morning':hour<18?'Good afternoon':'Good evening';
+  document.getElementById('todayGreeting').innerHTML=`<h2 class="text-2xl font-bold">${greeting}</h2><p class="text-slate-500">Focus on the smallest number of actions that keep participants moving and prevent compliance gaps.</p>`;
+
+  const active=data.participants.filter(p=>p.status!=='Closed');
+  const risks=active.map(getRisk);
+  const overdue=risks.filter(r=>r.label==='Overdue').length;
+  const warning=risks.filter(r=>r.label==='Needs Contact').length;
+  const noDate=risks.filter(r=>r.label==='No Date').length;
+  const dueTasks=data.tasks.filter(t=>!t.completed && daysUntil(t.due)<=0).length;
+  const cards=[
+    ['Active Participants',active.length,'bg-white'],
+    ['30+ Days',overdue,'bg-red-100 text-red-900'],
+    ['20–29 Days',warning,'bg-yellow-100 text-yellow-900'],
+    ['Tasks Due',dueTasks,'bg-blue-100 text-blue-900']
+  ];
+  document.getElementById('todaySummary').innerHTML=cards.map(c=>`<div class="${c[2]} rounded-2xl shadow p-4"><div class="text-sm opacity-80">${c[0]}</div><div class="text-3xl font-bold">${c[1]}</div></div>`).join('');
+
+  const priority=[...active].sort((a,b)=>{
+    const ar=getRisk(a), br=getRisk(b);
+    const at=participantTasks(a.id).some(t=>daysUntil(t.due)<=0)?2:0;
+    const bt=participantTasks(b.id).some(t=>daysUntil(t.due)<=0)?2:0;
+    return (br.priority+bt)-(ar.priority+at);
+  }).slice(0,8);
+
+  document.getElementById('priorityList').innerHTML=priority.length?priority.map(p=>{
+    const r=getRisk(p), advice=getActionAdvice(p);
+    return `<div class="p-4 flex flex-col md:flex-row md:items-center gap-3 ${r.row}">
+      <div class="flex-1 min-w-0">
+        <button onclick="openParticipantDetail('${p.id}')" class="font-bold text-left hover:underline">${escapeHtml(p.name)}</button>
+        <div class="text-xs text-slate-500">${escapeHtml(p.stateId||'No State ID')} · ${escapeHtml(p.program||'Program not listed')} · ${escapeHtml(p.assignedStaff||'Unassigned')}</div>
+        <div class="mt-2 text-sm"><span class="font-semibold">${escapeHtml(advice.title)}</span> <span class="text-slate-500">— ${escapeHtml(advice.detail)}</span></div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="px-2 py-1 rounded-full text-xs font-bold ${r.badge}">${r.days===null?'No date':r.days+' days'}</span>
+        <button onclick="openQuickUpdate('${p.id}')" class="bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-semibold">Start</button>
+      </div>
+    </div>`;
+  }).join(''):'<div class="p-5 text-slate-500">No participants loaded.</div>';
+
+  const recent=[...data.logs].sort((a,b)=>(b.savedAt||b.date||'').localeCompare(a.savedAt||a.date||'')).slice(0,6);
+  document.getElementById('recentUpdates').innerHTML=recent.length?recent.map(l=>`<div class="p-4">
+    <div class="font-semibold">${escapeHtml(l.participantName||'Participant')}</div>
+    <div class="text-sm text-slate-600">${escapeHtml(l.type||l.note||'Update')} · ${formatDate(l.date)}</div>
+  </div>`).join(''):'<div class="p-5 text-slate-500">No updates recorded yet.</div>';
+
+  document.getElementById('quickActions').innerHTML=data.settings.quickActions.map(key=>`<button onclick="runQuickAction('${key}')" class="border rounded-xl p-3 text-left hover:bg-slate-50 font-semibold">${escapeHtml(QUICK_ACTION_LABELS[key]||key)}</button>`).join('');
+
+  const widgets=[];
+  if(data.settings.dashboard.includes('overdue')) widgets.push(['30+ day contacts',overdue,'text-red-700']);
+  if(data.settings.dashboard.includes('warning')) widgets.push(['20–29 day contacts',warning,'text-yellow-700']);
+  if(data.settings.dashboard.includes('tasks')) widgets.push(['tasks due',dueTasks,'text-blue-700']);
+  if(data.settings.dashboard.includes('missing')) widgets.push(['missing contact dates',noDate,'text-slate-700']);
+  document.getElementById('personalDashboard').innerHTML=widgets.map(w=>`<div class="flex items-center justify-between border rounded-xl p-3"><span class="text-sm">${w[0]}</span><span class="text-xl font-bold ${w[2]}">${w[1]}</span></div>`).join('');
+}
+
+function filteredParticipants(){
+  let rows=[...data.participants];
+  const filter=document.getElementById('participantFilter')?.value||'all';
+  const staff=document.getElementById('staffFilter')?.value||'all';
+  if(filter==='needs') rows=rows.filter(p=>['Overdue','Needs Contact','No Date'].includes(getRisk(p).label));
+  if(filter==='overdue') rows=rows.filter(p=>getRisk(p).label==='Overdue');
+  if(filter==='warning') rows=rows.filter(p=>getRisk(p).label==='Needs Contact');
+  if(filter==='recent') rows=rows.filter(p=>p.lastUpdated && new Date(p.lastUpdated)>=recentThreshold());
+  if(staff!=='all') rows=rows.filter(p=>p.assignedStaff===staff);
+  const sort=document.getElementById('participantSort')?.value||'risk';
+  rows.sort((a,b)=>{
+    if(sort==='name') return (a.name||'').localeCompare(b.name||'');
+    if(sort==='staff') return (a.assignedStaff||'').localeCompare(b.assignedStaff||'');
+    if(sort==='last') return (a.lastCaseNoteDate||'').localeCompare(b.lastCaseNoteDate||'');
+    return getRisk(b).priority-getRisk(a).priority || (getRisk(b).days||0)-(getRisk(a).days||0);
+  });
+  return rows;
+}
+function setDisplayMode(mode){
+  displayMode=mode;
+  ['list','card','focus'].forEach(m=>document.getElementById('mode-'+m)?.classList.toggle('active',m===mode));
+  if(mode==='focus') focusIndex=0;
+  renderParticipants();
+}
+function renderParticipants(){
+  const el=document.getElementById('participantWorkspace'); if(!el)return;
+  const rows=filteredParticipants();
+  if(!rows.length){ el.innerHTML='<div class="bg-white rounded-2xl shadow p-6 text-slate-500">No participants match this view.</div>'; return; }
+  if(displayMode==='card'){
+    el.innerHTML=`<div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">${rows.map(p=>{
+      const r=getRisk(p), a=getActionAdvice(p);
+      return `<article class="bg-white rounded-2xl shadow p-4 border-t-4 ${r.label==='Overdue'?'border-red-600':r.label==='Needs Contact'?'border-yellow-400':r.label==='No Date'?'border-blue-500':'border-emerald-600'}">
+        <div class="flex justify-between gap-3">
+          <div><button onclick="openParticipantDetail('${p.id}')" class="font-bold text-lg text-left hover:underline">${escapeHtml(p.name)}</button><div class="text-xs text-slate-500">${escapeHtml(p.stateId||'No State ID')} · ${escapeHtml(p.program||'')}</div></div>
+          <span class="h-fit px-2 py-1 rounded-full text-xs font-bold ${r.badge}">${r.days===null?'No date':r.days+' days'}</span>
+        </div>
+        <div class="mt-4 bg-slate-50 rounded-xl p-3"><div class="text-xs uppercase tracking-wide text-slate-500">What should I do next?</div><div class="font-semibold mt-1">${escapeHtml(a.title)}</div><div class="text-sm text-slate-500">${escapeHtml(a.detail)}</div></div>
+        <div class="flex gap-2 mt-4"><button onclick="openQuickUpdate('${p.id}')" class="flex-1 bg-blue-700 text-white rounded-lg px-3 py-2 font-semibold">Quick Update</button><button onclick="openParticipantDetail('${p.id}')" class="border rounded-lg px-3 py-2 font-semibold">Open</button></div>
+      </article>`;
+    }).join('')}</div>`;
+    return;
+  }
+  if(displayMode==='focus'){
+    focusIndex=Math.max(0,Math.min(focusIndex,rows.length-1));
+    const p=rows[focusIndex], r=getRisk(p), a=getActionAdvice(p);
+    el.innerHTML=`<section class="bg-white rounded-2xl shadow max-w-3xl mx-auto overflow-hidden">
+      <div class="p-4 border-b flex justify-between"><span class="text-sm text-slate-500">Participant ${focusIndex+1} of ${rows.length}</span><span class="px-2 py-1 rounded-full text-xs font-bold ${r.badge}">${r.days===null?'No date':r.days+' days'}</span></div>
+      <div class="p-6">
+        <h2 class="text-2xl font-bold">${escapeHtml(p.name)}</h2><p class="text-slate-500">${escapeHtml(p.stateId||'No State ID')} · ${escapeHtml(p.program||'')} · ${escapeHtml(p.assignedStaff||'Unassigned')}</p>
+        <div class="mt-5 border rounded-2xl p-4"><div class="text-xs uppercase tracking-wide text-slate-500">Recommended action</div><div class="text-xl font-bold mt-1">${escapeHtml(a.title)}</div><p class="text-slate-600 mt-1">${escapeHtml(a.detail)}</p></div>
+        <div class="grid grid-cols-2 gap-3 mt-5">
+          <button onclick="openQuickUpdate('${p.id}')" class="bg-blue-700 text-white rounded-xl px-4 py-3 font-semibold">Start Action</button>
+          <button onclick="openParticipantDetail('${p.id}')" class="border rounded-xl px-4 py-3 font-semibold">Open Participant</button>
+        </div>
+        <div class="flex justify-between mt-6"><button onclick="focusIndex=Math.max(0,focusIndex-1);renderParticipants()" class="border rounded-lg px-3 py-2">Previous</button><button onclick="focusIndex=Math.min(${rows.length-1},focusIndex+1);renderParticipants()" class="border rounded-lg px-3 py-2">Next Participant</button></div>
+      </div>
+    </section>`;
+    return;
+  }
+  el.innerHTML=`<section class="bg-white rounded-2xl shadow overflow-hidden">
+    <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-slate-950 text-white"><tr>
+      <th class="text-left p-3">Participant</th><th class="text-left p-3">Program / Staff</th><th class="text-left p-3">Last Contact</th><th class="text-left p-3">Status</th><th class="text-left p-3">Next Action</th><th class="text-left p-3 no-print">Actions</th>
+    </tr></thead><tbody>${rows.map(p=>{
+      const r=getRisk(p),a=getActionAdvice(p);
+      return `<tr class="border-b ${r.row}"><td class="p-3"><button onclick="openParticipantDetail('${p.id}')" class="font-bold hover:underline">${escapeHtml(p.name)}</button><div class="text-xs text-slate-500">${escapeHtml(p.stateId||'No State ID')}</div></td>
+      <td class="p-3">${escapeHtml(p.program||'')}<div class="text-xs text-slate-500">${escapeHtml(p.assignedStaff||'Unassigned')}</div></td>
+      <td class="p-3">${formatDate(p.lastCaseNoteDate)||'No date'}<div class="text-xs text-slate-500">${r.days===null?'':r.days+' days ago'}</div></td>
+      <td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-bold ${r.badge}">${r.label}</span></td>
+      <td class="p-3"><div class="font-semibold">${escapeHtml(a.title)}</div><div class="text-xs text-slate-500 truncate-2">${escapeHtml(a.detail)}</div></td>
+      <td class="p-3 no-print"><div class="flex gap-2"><button onclick="openQuickUpdate('${p.id}')" class="bg-blue-700 text-white rounded-lg px-3 py-2 font-semibold">Update</button><button onclick="openParticipantDetail('${p.id}')" class="border rounded-lg px-3 py-2">Open</button></div></td></tr>`;
+    }).join('')}</tbody></table></div></section>`;
+}
+
+function renderTasks(){
+  const pending=data.tasks.filter(t=>!t.completed).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+  const el=document.getElementById('taskList'); if(!el)return;
+  el.innerHTML=pending.length?pending.map(t=>{
+    const p=data.participants.find(p=>p.id===t.participantId);
+    const du=daysUntil(t.due);
+    return `<div class="p-4 flex items-center gap-3 ${du<0?'bg-red-50':du===0?'bg-yellow-50':''}">
+      <button onclick="completeTask('${t.id}')" class="w-6 h-6 border-2 rounded-full shrink-0 hover:bg-emerald-100" title="Mark complete"></button>
+      <div class="flex-1"><div class="font-semibold">${escapeHtml(t.text)}</div><div class="text-sm text-slate-500">${escapeHtml(p?.name||'General task')} · Due ${formatDate(t.due)||'No date'}</div></div>
+      <button onclick="deleteTask('${t.id}')" class="text-red-700 text-sm">Delete</button>
+    </div>`;
+  }).join(''):'<div class="p-5 text-slate-500">No open tasks.</div>';
+  const overdue=pending.filter(t=>daysUntil(t.due)<0).length;
+  const today=pending.filter(t=>daysUntil(t.due)===0).length;
+  const week=pending.filter(t=>daysUntil(t.due)>0&&daysUntil(t.due)<=7).length;
+  document.getElementById('taskSummary').innerHTML=[
+    ['Overdue',overdue,'text-red-700'],['Due today',today,'text-yellow-700'],['Next 7 days',week,'text-blue-700'],['Open tasks',pending.length,'text-slate-900']
+  ].map(x=>`<div class="flex justify-between border rounded-xl p-3"><span>${x[0]}</span><span class="font-bold ${x[2]}">${x[1]}</span></div>`).join('');
+}
+
+function renderReports(){
+  const active=data.participants.filter(p=>p.status!=='Closed');
+  const counts={current:0,warning:0,overdue:0,nodate:0};
+  active.forEach(p=>{ const l=getRisk(p).label; if(l==='Current')counts.current++; if(l==='Needs Contact')counts.warning++; if(l==='Overdue')counts.overdue++; if(l==='No Date')counts.nodate++; });
+  document.getElementById('reportSummary').innerHTML=[
+    ['Current',counts.current,'bg-emerald-100'],['20–29 Days',counts.warning,'bg-yellow-100'],['30+ Days',counts.overdue,'bg-red-100'],['No Date',counts.nodate,'bg-blue-100']
+  ].map(c=>`<div class="${c[2]} rounded-2xl shadow p-4"><div class="text-sm">${c[0]}</div><div class="text-3xl font-bold">${c[1]}</div></div>`).join('');
+  const rows=[...active].sort((a,b)=>getRisk(b).priority-getRisk(a).priority);
+  document.getElementById('complianceReport').innerHTML=`<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b"><th class="text-left p-2">Participant</th><th class="text-left p-2">Staff</th><th class="text-left p-2">Last Case Note</th><th class="text-left p-2">Days</th><th class="text-left p-2">Status</th></tr></thead><tbody>${rows.map(p=>{const r=getRisk(p);return `<tr class="border-b"><td class="p-2">${escapeHtml(p.name)}</td><td class="p-2">${escapeHtml(p.assignedStaff||'')}</td><td class="p-2">${formatDate(p.lastCaseNoteDate)||'No date'}</td><td class="p-2">${r.days??''}</td><td class="p-2">${r.label}</td></tr>`}).join('')}</tbody></table></div>`;
+}
+
+function renderSettings(){
+  const dashOptions=[['overdue','30-day contact alerts'],['warning','20–29 day warnings'],['tasks','Tasks due'],['missing','Missing contact dates']];
+  document.getElementById('dashboardOptions').innerHTML=dashOptions.map(([k,l])=>`<label class="flex items-center gap-3 border rounded-xl p-3"><input type="checkbox" ${data.settings.dashboard.includes(k)?'checked':''} onchange="toggleSetting('dashboard','${k}',this.checked)"/><span>${l}</span></label>`).join('');
+  const actions=['contact','caseNote','task','activity','employment','training'];
+  document.getElementById('quickActionOptions').innerHTML=actions.map(k=>`<label class="flex items-center gap-3 border rounded-xl p-3"><input type="checkbox" ${data.settings.quickActions.includes(k)?'checked':''} onchange="toggleSetting('quickActions','${k}',this.checked)"/><span>${QUICK_ACTION_LABELS[k]}</span></label>`).join('');
+}
+function toggleSetting(group,key,checked){
+  const arr=data.settings[group];
+  if(checked&&!arr.includes(key)) arr.push(key);
+  if(!checked) data.settings[group]=arr.filter(x=>x!==key);
+  persist(); renderToday();
+}
+
+function updateParticipantSelectors(){
+  const opts='<option value="">Select participant</option>'+[...data.participants].sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(p=>`<option value="${p.id}">${escapeHtml(p.name)}${p.stateId?' — '+escapeHtml(p.stateId):''}</option>`).join('');
+  ['quParticipant','taskParticipant'].forEach(id=>{const el=document.getElementById(id); if(el){const cur=el.value;el.innerHTML=opts;if([...el.options].some(o=>o.value===cur))el.value=cur;}});
+}
+function updateStaffFilter(){
+  const el=document.getElementById('staffFilter'); if(!el)return;
+  const cur=el.value; const staff=[...new Set(data.participants.map(p=>p.assignedStaff).filter(Boolean))].sort();
+  el.innerHTML='<option value="all">All staff</option>'+staff.map(s=>`<option>${escapeHtml(s)}</option>`).join('');
+  if(cur==='all'||staff.includes(cur))el.value=cur;
+}
+
+function openQuickUpdate(participantId='',presetType=''){
+  updateParticipantSelectors();
+  document.getElementById('quParticipant').value=participantId||'';
+  document.getElementById('quDate').value=todayISO();
+  document.getElementById('quDetails').value='';
+  document.getElementById('quNextStep').value='';
+  document.getElementById('quFollowUp').value='';
+  document.getElementById('quCaseNoteComplete').checked=false;
+  selectedUpdateType=presetType||'Contact made';
+  selectedMethod='Phone';
+  selectedTopics=[];
+  renderQuickUpdateControls();
+  document.getElementById('quickUpdateModal').classList.remove('hidden');
+  generateCaseNotePreview();
+}
+function renderQuickUpdateControls(){
+  document.getElementById('updateTypeButtons').innerHTML=UPDATE_TYPES.map(t=>`<button onclick="selectedUpdateType='${t}';renderQuickUpdateControls();generateCaseNotePreview()" class="border rounded-lg p-2 text-sm ${selectedUpdateType===t?'bg-blue-700 text-white':'bg-white'}">${t}</button>`).join('');
+  document.getElementById('methodButtons').innerHTML=METHODS.map(m=>`<button onclick="selectedMethod='${m}';renderQuickUpdateControls();generateCaseNotePreview()" class="border rounded-lg px-3 py-2 text-sm ${selectedMethod===m?'bg-slate-950 text-white':'bg-white'}">${m}</button>`).join('');
+  document.getElementById('topicButtons').innerHTML=TOPICS.map(t=>`<button onclick="toggleTopic('${t.replace(/'/g,"\\'")}')" class="border rounded-lg p-2 text-sm ${selectedTopics.includes(t)?'bg-emerald-700 text-white':'bg-white'}">${t}</button>`).join('');
+  document.getElementById('contactMethodWrap').classList.toggle('hidden',!['Contact made','Contact attempted','Appointment scheduled'].includes(selectedUpdateType));
+}
+function toggleTopic(t){ selectedTopics=selectedTopics.includes(t)?selectedTopics.filter(x=>x!==t):[...selectedTopics,t]; renderQuickUpdateControls(); generateCaseNotePreview(); }
+['quParticipant','quDate','quDetails','quNextStep','quFollowUp'].forEach(id=>document.addEventListener('input',e=>{if(e.target.id===id)generateCaseNotePreview()}));
+function buildCaseNote(){
+  const p=data.participants.find(p=>p.id===document.getElementById('quParticipant').value);
+  if(!p) return 'Select a participant to generate the case note.';
+  const date=formatDate(document.getElementById('quDate').value)||'the documented date';
+  const details=cleanText(document.getElementById('quDetails').value);
+  const next=cleanText(document.getElementById('quNextStep').value);
+  const follow=formatDate(document.getElementById('quFollowUp').value);
+  const topics=selectedTopics.length?selectedTopics.join(', ').toLowerCase():'participant progress';
+  let first='';
+  if(selectedUpdateType==='Contact made') first=`Career Navigator contacted the participant by ${selectedMethod.toLowerCase()} on ${date} and discussed ${topics}.`;
+  else if(selectedUpdateType==='Contact attempted') first=`Career Navigator attempted to contact the participant by ${selectedMethod.toLowerCase()} on ${date} regarding ${topics}.`;
+  else if(selectedUpdateType==='Document received') first=`Career Navigator documented receipt of participant information on ${date} related to ${topics}.`;
+  else if(selectedUpdateType==='Appointment scheduled') first=`Career Navigator scheduled participant follow-up by ${selectedMethod.toLowerCase()} on ${date} regarding ${topics}.`;
+  else first=`Career Navigator documented a ${selectedUpdateType.toLowerCase()} on ${date} related to ${topics}.`;
+  const parts=[first];
+  if(details) parts.push(details.endsWith('.')?details:details+'.');
+  if(next) parts.push(`Next step: ${next}${next.endsWith('.')?'':'.'}`);
+  if(follow) parts.push(`Follow-up is planned for ${follow}.`);
+  return parts.join(' ');
+}
+function generateCaseNotePreview(){ const el=document.getElementById('generatedCaseNote'); if(el)el.textContent=buildCaseNote(); }
+function copyGeneratedCaseNote(){ navigator.clipboard?.writeText(buildCaseNote()); }
+function saveQuickUpdate(){
+  const participantId=document.getElementById('quParticipant').value;
+  const p=data.participants.find(p=>p.id===participantId);
+  if(!p){alert('Select a participant.');return;}
+  const date=document.getElementById('quDate').value;
+  if(!date){alert('Select a date.');return;}
+  const details=cleanText(document.getElementById('quDetails').value);
+  const next=cleanText(document.getElementById('quNextStep').value);
+  const follow=document.getElementById('quFollowUp').value;
+  const caseNoteComplete=document.getElementById('quCaseNoteComplete').checked;
+  const isContact=['Contact made','Contact attempted'].includes(selectedUpdateType);
+  if(isContact || caseNoteComplete) p.lastCaseNoteDate=date;
+  p.lastUpdated=new Date().toISOString();
+  data.logs.unshift({
+    id:createId(),participantId:p.id,stateId:p.stateId,participantName:p.name,date,
+    type:selectedUpdateType,method:selectedMethod,topics:[...selectedTopics],details,nextStep:next,followUpDate:follow,
+    caseNoteComplete,generatedCaseNote:buildCaseNote(),savedAt:new Date().toISOString()
+  });
+  if(next && follow){
+    data.tasks.push({id:createId(),participantId:p.id,text:next,due:follow,completed:false,createdAt:new Date().toISOString()});
+  }
+  persist(); closeModal('quickUpdateModal'); renderAll();
+}
+
+function openParticipantDetail(id){
+  const p=data.participants.find(p=>p.id===id); if(!p)return;
+  const r=getRisk(p),a=getActionAdvice(p),logs=participantLogs(id).slice(0,10),tasks=participantTasks(id);
+  document.getElementById('detailName').textContent=p.name;
+  document.getElementById('detailMeta').textContent=[p.stateId,p.program,p.status,p.assignedStaff].filter(Boolean).join(' · ');
+  document.getElementById('participantDetailBody').innerHTML=`
+    <div class="grid md:grid-cols-4 gap-3">
+      <div class="border rounded-xl p-3"><div class="text-xs text-slate-500">Last case note</div><div class="font-bold">${formatDate(p.lastCaseNoteDate)||'No date'}</div></div>
+      <div class="border rounded-xl p-3"><div class="text-xs text-slate-500">Days since</div><div class="font-bold">${r.days??'—'}</div></div>
+      <div class="border rounded-xl p-3"><div class="text-xs text-slate-500">Open tasks</div><div class="font-bold">${tasks.length}</div></div>
+      <div class="border rounded-xl p-3"><div class="text-xs text-slate-500">Contact status</div><span class="inline-block mt-1 px-2 py-1 rounded-full text-xs font-bold ${r.badge}">${r.label}</span></div>
+    </div>
+    <div class="mt-5 bg-slate-950 text-white rounded-2xl p-5">
+      <div class="text-xs uppercase tracking-wider text-slate-400">What should I do next?</div>
+      <div class="text-xl font-bold mt-1">${escapeHtml(a.title)}</div>
+      <div class="text-slate-300 mt-1">${escapeHtml(a.detail)}</div>
+      <button onclick="closeModal('participantModal');openQuickUpdate('${p.id}')" class="mt-4 bg-blue-600 px-4 py-2 rounded-lg font-semibold">Start Action</button>
+    </div>
+    <div class="grid lg:grid-cols-2 gap-5 mt-5">
+      <section><h3 class="font-bold text-lg">Open Tasks</h3><div class="mt-2 space-y-2">${tasks.length?tasks.map(t=>`<div class="border rounded-xl p-3"><div class="font-semibold">${escapeHtml(t.text)}</div><div class="text-sm text-slate-500">Due ${formatDate(t.due)}</div></div>`).join(''):'<div class="text-slate-500">No open tasks.</div>'}</div></section>
+      <section><h3 class="font-bold text-lg">Recent Timeline</h3><div class="mt-2 space-y-2">${logs.length?logs.map(l=>`<div class="border-l-4 border-slate-300 pl-3 py-1"><div class="font-semibold">${escapeHtml(l.type||l.note||'Update')}</div><div class="text-sm text-slate-500">${formatDate(l.date)}${l.method?' · '+escapeHtml(l.method):''}</div><div class="text-sm mt-1">${escapeHtml(l.details||l.generatedCaseNote||'')}</div></div>`).join(''):'<div class="text-slate-500">No timeline entries.</div>'}</div></section>
+    </div>
+    <div class="flex flex-wrap gap-2 mt-6 border-t pt-4">
+      <button onclick="openParticipantEditor('${p.id}')" class="border rounded-lg px-3 py-2 font-semibold">Edit Participant</button>
+      <button onclick="openTaskEditor('${p.id}')" class="border rounded-lg px-3 py-2 font-semibold">Add Task</button>
+      <button onclick="deleteParticipant('${p.id}')" class="text-red-700 border border-red-300 rounded-lg px-3 py-2 font-semibold">Delete Participant</button>
+    </div>`;
+  document.getElementById('participantModal').classList.remove('hidden');
+}
+
+function openParticipantEditor(id=''){
+  const p=data.participants.find(p=>p.id===id);
+  document.getElementById('peId').value=p?.id||'';
+  document.getElementById('peName').value=p?.name||'';
+  document.getElementById('peStateId').value=p?.stateId||'';
+  document.getElementById('peProgram').value=p?.program||'Adult';
+  document.getElementById('peStaff').value=p?.assignedStaff||'';
+  document.getElementById('peParticipation').value=p?.participationDate||'';
+  document.getElementById('peLastContact').value=p?.lastCaseNoteDate||'';
+  document.getElementById('peStatus').value=p?.status||'Active';
+  closeModal('participantModal');
+  document.getElementById('participantEditorModal').classList.remove('hidden');
+}
+function saveParticipantEditor(){
+  const id=document.getElementById('peId').value;
+  const name=cleanText(document.getElementById('peName').value);
+  if(!name){alert('Participant name is required.');return;}
+  const rec={
+    id:id||createId(),name,stateId:cleanText(document.getElementById('peStateId').value),
+    program:document.getElementById('peProgram').value,assignedStaff:cleanText(document.getElementById('peStaff').value),
+    participationDate:document.getElementById('peParticipation').value,lastCaseNoteDate:document.getElementById('peLastContact').value,
+    status:document.getElementById('peStatus').value,lastUpdated:new Date().toISOString()
+  };
+  const existing=data.participants.find(p=>p.id===id);
+  if(existing)Object.assign(existing,rec);else data.participants.push(rec);
+  persist();closeModal('participantEditorModal');renderAll();
+}
+function deleteParticipant(id){
+  if(!confirm('Delete this participant and all related logs and tasks?'))return;
+  data.participants=data.participants.filter(p=>p.id!==id);
+  data.logs=data.logs.filter(l=>l.participantId!==id);
+  data.tasks=data.tasks.filter(t=>t.participantId!==id);
+  persist();closeModal('participantModal');renderAll();
+}
+
+function openTaskEditor(participantId=''){
+  updateParticipantSelectors();
+  document.getElementById('taskParticipant').value=participantId||'';
+  document.getElementById('taskText').value='';
+  const d=new Date();d.setDate(d.getDate()+7);document.getElementById('taskDue').value=dateToISO(d);
+  closeModal('participantModal');
+  document.getElementById('taskModal').classList.remove('hidden');
+}
+function saveTask(){
+  const text=cleanText(document.getElementById('taskText').value),participantId=document.getElementById('taskParticipant').value,due=document.getElementById('taskDue').value;
+  if(!text){alert('Enter a task.');return;}
+  data.tasks.push({id:createId(),participantId,text,due,completed:false,createdAt:new Date().toISOString()});
+  persist();closeModal('taskModal');renderAll();
+}
+function completeTask(id){const t=data.tasks.find(t=>t.id===id);if(t){t.completed=true;t.completedAt=new Date().toISOString();persist();renderAll();}}
+function deleteTask(id){data.tasks=data.tasks.filter(t=>t.id!==id);persist();renderAll();}
+
+function runQuickAction(key){
+  if(key==='task')return openTaskEditor();
+  const map={contact:'Contact made',caseNote:'Contact made',activity:'Activity completed',employment:'Employment update',training:'Training update'};
+  openQuickUpdate('',map[key]||'Contact made');
+}
+
+function startWorkday(){
+  workdayQueue=[...data.participants].filter(p=>p.status!=='Closed').sort((a,b)=>getRisk(b).priority-getRisk(a).priority).filter(p=>getRisk(p).priority>=3 || participantTasks(p.id).some(t=>daysUntil(t.due)<=7));
+  if(!workdayQueue.length){alert('No priority participants or due tasks are currently in the work queue.');return;}
+  focusIndex=0;document.getElementById('workdayModal').classList.remove('hidden');renderWorkday();
+}
+function renderWorkday(){
+  const p=workdayQueue[focusIndex];if(!p){closeModal('workdayModal');return;}
+  const r=getRisk(p),a=getActionAdvice(p);
+  document.getElementById('workdayProgress').textContent=`${focusIndex+1} of ${workdayQueue.length}`;
+  document.getElementById('workdayBody').innerHTML=`<div class="flex justify-between gap-3"><div><h3 class="text-2xl font-bold">${escapeHtml(p.name)}</h3><p class="text-slate-500">${escapeHtml(p.stateId||'No State ID')} · ${escapeHtml(p.program||'')} · ${escapeHtml(p.assignedStaff||'Unassigned')}</p></div><span class="h-fit px-2 py-1 rounded-full text-xs font-bold ${r.badge}">${r.days===null?'No date':r.days+' days'}</span></div>
+  <div class="mt-5 border rounded-2xl p-5 bg-slate-50"><div class="text-xs uppercase tracking-wide text-slate-500">Suggested action</div><div class="text-xl font-bold mt-1">${escapeHtml(a.title)}</div><p class="text-slate-600 mt-1">${escapeHtml(a.detail)}</p></div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-5"><button onclick="closeModal('workdayModal');openQuickUpdate('${p.id}','Contact made')" class="bg-blue-700 text-white rounded-lg p-3 font-semibold">Called / Contacted</button><button onclick="closeModal('workdayModal');openQuickUpdate('${p.id}','Contact attempted')" class="border rounded-lg p-3 font-semibold">Attempted</button><button onclick="openParticipantDetail('${p.id}')" class="border rounded-lg p-3 font-semibold">Open Record</button><button onclick="nextWorkday()" class="border rounded-lg p-3 font-semibold">Skip</button></div>`;
+}
+function nextWorkday(){focusIndex++;if(focusIndex>=workdayQueue.length){closeModal('workdayModal');return;}renderWorkday();}
+
+function renderCommandResults(){
+  const input=document.getElementById('commandSearch'),box=document.getElementById('commandResults'),q=input.value.trim().toLowerCase();
+  const actions=[
+    {label:'Log contact',run:"openQuickUpdate('','Contact made')"},
+    {label:'Add case note',run:"openQuickUpdate('','Contact made')"},
+    {label:'Add task',run:"openTaskEditor()"},
+    {label:'Show overdue participants',run:"showPage('participants');document.getElementById('participantFilter').value='overdue';renderParticipants()"}
+  ].filter(a=>!q||a.label.toLowerCase().includes(q));
+  const participants=data.participants.filter(p=>!q||[p.name,p.stateId,p.assignedStaff].some(v=>String(v||'').toLowerCase().includes(q))).slice(0,8);
+  const items=[
+    ...actions.map(a=>`<button onclick="${a.run};hideCommandResults()" class="w-full text-left p-3 hover:bg-slate-50 border-b"><div class="font-semibold">${escapeHtml(a.label)}</div><div class="text-xs text-slate-500">Action</div></button>`),
+    ...participants.map(p=>`<button onclick="openParticipantDetail('${p.id}');hideCommandResults()" class="w-full text-left p-3 hover:bg-slate-50 border-b"><div class="font-semibold">${escapeHtml(p.name)}</div><div class="text-xs text-slate-500">${escapeHtml(p.stateId||'No State ID')} · ${escapeHtml(p.assignedStaff||'Unassigned')}</div></button>`)
+  ];
+  box.innerHTML=items.join('')||'<div class="p-3 text-slate-500">No results.</div>';box.classList.remove('hidden');
+}
+function hideCommandResults(){document.getElementById('commandResults').classList.add('hidden');document.getElementById('commandSearch').value='';}
+document.addEventListener('click',e=>{if(!e.target.closest('#commandSearch')&&!e.target.closest('#commandResults'))hideCommandResults();});
+
+function closeModal(id){document.getElementById(id).classList.add('hidden');}
+function getValueByHeader(row,map,names){for(const n of names){const k=normalizeHeader(n);if(map[k]!==undefined)return row[map[k]];}return '';}
+function findHeaderRow(rows){for(let i=0;i<Math.min(rows.length,25);i++){const n=rows[i].map(normalizeHeader);if(n.includes('state id')&&(n.includes('last, first name')||n.includes('last,first name')||n.includes('name')||n.includes('participant name'))&&n.some(h=>h.includes('last')&&h.includes('case note')&&h.includes('date')))return i;}return -1;}
+function findParticipant(stateId,name){if(stateId){const p=data.participants.find(x=>String(x.stateId||'').trim()===String(stateId).trim());if(p)return p;}return data.participants.find(x=>String(x.name||'').trim().toLowerCase()===String(name||'').trim().toLowerCase());}
+function importExcel(event){
+  const file=event.target.files[0];if(!file)return;const reader=new FileReader();
+  reader.onload=e=>{try{
+    const wb=XLSX.read(e.target.result,{type:'array',cellDates:true}),sheet=wb.Sheets[wb.SheetNames[0]],rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''}),idx=findHeaderRow(rows);
+    if(idx===-1){alert('Could not find required headers.');return;}
+    const headers=rows[idx].map(normalizeHeader),map={};headers.forEach((h,i)=>{if(h)map[h]=i;});
+    let added=0,updated=0,skipped=0;
+    for(let i=idx+1;i<rows.length;i++){
+      const row=rows[i],stateId=cleanText(getValueByHeader(row,map,['State ID'])),name=cleanText(getValueByHeader(row,map,['Last, First Name','Last,First Name','Name','Participant Name']));
+      if(!stateId&&!name){skipped++;continue;}
+      const existing=findParticipant(stateId,name);
+      const rec={
+        id:existing?.id||createId(),stateId,name,
+        participationDate:toISODate(getValueByHeader(row,map,['Participation Date'])),
+        assignedStaff:cleanText(getValueByHeader(row,map,['Assigned Staff']))||existing?.assignedStaff||'',
+        lastCaseNoteDate:toISODate(getValueByHeader(row,map,['Last Case Note Date','Last Case Note','Last Note Date']))||existing?.lastCaseNoteDate||'',
+        program:existing?.program||'',status:existing?.status||'Active',lastUpdated:new Date().toISOString()
+      };
+      if(existing){Object.assign(existing,rec);updated++;}else{data.participants.push(rec);added++;}
+    }
+    persist();renderAll();document.getElementById('importResult').innerHTML=`<strong>Excel import complete.</strong> Added: ${added}. Updated: ${updated}. Skipped blank rows: ${skipped}.`;event.target.value='';
+  }catch(err){console.error(err);alert('Import failed. Check the Excel file and headers.');}};
+  reader.readAsArrayBuffer(file);
+}
+function loadSampleData(){
+  data={
+    participants:[
+      {id:createId(),stateId:'123456',name:'Smith, John',program:'Adult',participationDate:'2026-05-01',assignedStaff:'B. Pham',lastCaseNoteDate:'2026-06-25',status:'Active',lastUpdated:new Date().toISOString()},
+      {id:createId(),stateId:'234567',name:'Johnson, Maria',program:'Youth',participationDate:'2026-04-15',assignedStaff:'A. Lee',lastCaseNoteDate:'2026-06-07',status:'Training',lastUpdated:new Date().toISOString()},
+      {id:createId(),stateId:'345678',name:'Brown, Tyler',program:'Adult',participationDate:'2026-03-20',assignedStaff:'B. Pham',lastCaseNoteDate:'2026-05-28',status:'WEX',lastUpdated:new Date().toISOString()},
+      {id:createId(),stateId:'456789',name:'Nguyen, David',program:'Dislocated Worker',participationDate:'2026-05-28',assignedStaff:'C. Ramos',lastCaseNoteDate:'',status:'Active',lastUpdated:new Date().toISOString()}
+    ],logs:[],tasks:[],settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS))
+  };
+  data.tasks.push({id:createId(),participantId:data.participants[1].id,text:'Request training attendance record',due:'2026-07-06',completed:false});
+  persist();renderAll();
+}
+function exportJSON(){downloadFile('career-navigator-workflow-backup.json',JSON.stringify(data,null,2),'application/json');}
+function importJSON(event){const f=event.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);data={participants:x.participants||[],logs:x.logs||[],tasks:x.tasks||[],settings:x.settings||JSON.parse(JSON.stringify(DEFAULT_SETTINGS))};persist();renderAll();}catch{alert('Invalid JSON file.');}};r.readAsText(f);}
+function exportCSV(){
+  const rows=[['State ID','Participant Name','Program','Assigned Staff','Status','Participation Date','Last Case Note Date','Days Since','Risk Status','Next Recommended Action']];
+  data.participants.forEach(p=>{const r=getRisk(p),a=getActionAdvice(p);rows.push([p.stateId,p.name,p.program,p.assignedStaff,p.status,p.participationDate,p.lastCaseNoteDate,r.days??'',r.label,a.title]);});
+  const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');downloadFile('career-navigator-workflow.csv',csv,'text/csv');
+}
+function downloadFile(name,content,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();URL.revokeObjectURL(a.href);}
+function clearAllData(){if(!confirm('Clear all tracker data from this browser?'))return;data={participants:[],logs:[],tasks:[],settings:JSON.parse(JSON.stringify(DEFAULT_SETTINGS))};persist();renderAll();}
+
+document.getElementById('quDate').value=todayISO();
+renderAll();
+</script>
+</body>
+</html>
